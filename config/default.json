@@ -1,0 +1,144 @@
+{
+  "app": {
+    "name": "驾驶员危险行为检测系统",
+    "code": "DriverGuard",
+    "version": "1.0.0"
+  },
+
+  "source": {
+    "type": "camera",
+    "camera_index": 0,
+    "video_path": "assets/samples/driver_demo.mp4",
+    "image_dir": "assets/samples/frames",
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "loop_video": true,
+    "speed": 1.0,
+    "synthetic_duration": 0,
+    "camera_backend": "any"
+  },
+
+  "perception": {
+    "provider": "mediapipe",
+    "model_dir": "assets/models",
+    "face_model": "face_landmarker.task",
+    "hand_model": "hand_landmarker.task",
+    "enable_hands": true,
+    "max_faces": 1,
+    "max_hands": 2,
+    "min_face_detection_confidence": 0.5,
+    "min_face_presence_confidence": 0.5,
+    "min_tracking_confidence": 0.5,
+    "min_hand_detection_confidence": 0.5,
+    "min_hand_presence_confidence": 0.5,
+    "min_hand_tracking_confidence": 0.5,
+    "frame_stride": 1
+  },
+
+  "smoothing": {
+    "window": 9,
+    "min_samples": 3
+  },
+
+  "rules": {
+    "eyes_closed": {
+      "enabled": true,
+      "severity": "high",
+      "ear_threshold": 0.21,
+      "blendshape_threshold": 0.55,
+      "min_duration": 1.2,
+      "trigger_frames": 6,
+      "release_frames": 8,
+      "cooldown_seconds": 6.0
+    },
+    "yawning": {
+      "enabled": true,
+      "severity": "medium",
+      "mar_threshold": 0.55,
+      "jaw_open_threshold": 0.45,
+      "min_duration": 0.8,
+      "trigger_frames": 5,
+      "release_frames": 8,
+      "cooldown_seconds": 10.0
+    },
+    "head_down": {
+      "enabled": true,
+      "severity": "high",
+      "pitch_threshold_deg": 18.0,
+      "pitch_ratio_drop": 0.06,
+      "min_duration": 1.5,
+      "trigger_frames": 8,
+      "release_frames": 10,
+      "cooldown_seconds": 8.0
+    },
+    "gaze_off_road": {
+      "enabled": true,
+      "severity": "high",
+      "yaw_threshold_deg": 25.0,
+      "roll_threshold_deg": 22.0,
+      "min_duration": 1.8,
+      "trigger_frames": 10,
+      "release_frames": 12,
+      "cooldown_seconds": 8.0
+    },
+    "phone_call": {
+      "enabled": true,
+      "severity": "critical",
+      "hand_face_distance_ratio": 0.55,
+      "min_duration": 1.0,
+      "trigger_frames": 8,
+      "release_frames": 12,
+      "cooldown_seconds": 15.0
+    },
+    "smoking": {
+      "enabled": true,
+      "severity": "high",
+      "hand_mouth_distance_ratio": 0.35,
+      "hold_seconds": 2.5,
+      "trigger_frames": 10,
+      "release_frames": 15,
+      "cooldown_seconds": 20.0
+    },
+    "driver_absent": {
+      "enabled": true,
+      "severity": "critical",
+      "absent_seconds": 3.0,
+      "trigger_frames": 30,
+      "release_frames": 5,
+      "cooldown_seconds": 10.0
+    }
+  },
+
+  "alert": {
+    "log_console": true,
+    "csv_enabled": true,
+    "sound_enabled": true,
+    "sound_min_severity": "high",
+    "snapshot_enabled": true,
+    "snapshot_min_severity": "high",
+    "snapshot_scale": 1.0
+  },
+
+  "output": {
+    "dir": "output",
+    "events_csv": "events/events.csv",
+    "snapshot_dir": "snapshots",
+    "session_csv": "events/sessions.csv",
+    "report_html": "report.html"
+  },
+
+  "ui": {
+    "show_landmarks": true,
+    "show_face_box": true,
+    "show_hud": true,
+    "theme": "dark",
+    "max_events_in_table": 500,
+    "display_scale": 1.0
+  },
+
+  "logging": {
+    "level": "INFO",
+    "file": "output/driver_guard.log"
+  }
+}

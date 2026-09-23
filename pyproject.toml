@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "driver-guard"
+version = "1.0.0"
+description = "驾驶员危险行为检测系统 —— 软件体系结构课程设计"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "软件体系结构课程设计小组" }]
+keywords = ["adas", "dms", "fatigue-detection", "mediapipe", "pyside6"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Image Recognition",
+]
+
+dependencies = [
+  "opencv-contrib-python>=4.8",
+  "numpy>=1.24",
+  "mediapipe>=0.10",
+  "PySide6>=6.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+docs = ["python-docx>=1.1"]
+
+[project.scripts]
+driver-guard = "driver_guard.main:main"
+
+[project.urls]
+Documentation = "./docs"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["driver_guard*"]
+
+[tool.setuptools.package-data]
+driver_guard = ["presentation/assets/*", "assets/*"]
+
+# ---------------------------------------------------------------------------
+#  pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+markers = [
+  "slow: 需要加载真实模型或摄像头的用例",
+  "gui: 需要 Qt 图形环境的用例",
+]
+
+# ---------------------------------------------------------------------------
+#  coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/driver_guard"]
+branch = true
+omit = ["src/driver_guard/presentation/*", "src/driver_guard/main.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

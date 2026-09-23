@@ -1,0 +1,58 @@
+# ============================================================================
+#  驾驶员危险行为检测系统 —— Git 忽略规则
+# ============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# --- 测试与覆盖率 ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# --- 运行期产出（运行时生成，不进版本库）---
+output/
+*.log
+
+# --- 标定与调试临时文件 ---
+.calib/
+.tmp_*
+*.tmp
+
+# --- 大型模型与数据集（体积大，用脚本重新下载）---
+# 感知模型：python tools/download_models.py
+assets/models/*.task
+# Haar 级联：python tools/fetch_cascades.py
+assets/cascades/*.xml
+# 示例视频（自行录制或放置）
+assets/samples/*.mp4
+assets/samples/frames/
+
+# --- 编辑器 / 操作系统 ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- 文档转换中间产物 ---
+docs/*.docx.tmp
+~$*.docx
+~$*.pptx
