@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -80,6 +81,8 @@ class DetectionWorker(QObject):
         self._min_interval = 1.0 / max(1.0, display_fps)
         self._last_emit = 0.0
         self._active: dict[BehaviorType, BehaviorEvent] = {}
+        # 状态栏会在界面线程读取 _active，而写入发生在工作线程
+        self._active_lock = threading.Lock()
         self._running = False
         self._pending_recalibration = False
         self._fps_window_start = time.perf_counter()
@@ -107,7 +110,8 @@ class DetectionWorker(QObject):
 
     @property
     def active_events(self) -> tuple[BehaviorEvent, ...]:
-        return tuple(self._active.values())
+        with self._active_lock:
+            return tuple(self._active.values())
 
     # ------------------------------------------------------------------
     #  控制（由界面线程调用）
@@ -146,13 +150,15 @@ class DetectionWorker(QObject):
         except Exception as exc:  # noqa: BLE001 - 兜底，保证界面收到通知
             logger.exception("工作线程异常终止")
             self._running = False
-            self._active.clear()
+            with self._active_lock:
+                self._active.clear()
             self.failed.emit(f"{type(exc).__name__}: {exc}")
             self.stateChanged.emit("异常")
             return
 
         self._running = False
-        self._active.clear()
+        with self._active_lock:
+            self._active.clear()
         if summary.interrupted:
             self.stateChanged.emit("已停止")
         elif self._context.detection_service.last_error:
@@ -202,11 +208,12 @@ class DetectionWorker(QObject):
         )
 
     def _sync_active_events(self) -> None:
-        """按确认器的激活集合增删"当前告警"，用于画面状态条。"""
+        """移除已解除的行为；新增由 :meth:`on_event` 负责。"""
         active = set(self._context.pipeline.confirmer.active_behaviors)
-        for behavior in list(self._active):
-            if behavior not in active:
-                del self._active[behavior]
+        with self._active_lock:
+            for behavior in list(self._active):
+                if behavior not in active:
+                    del self._active[behavior]
 
     def _account_fps(self) -> None:
         """按秒滚动窗口统计实际处理帧率。"""
@@ -227,7 +234,7 @@ class DetectionWorker(QObject):
     #  告警通道回调（由 AlertService 在工作线程中调用）
     # ------------------------------------------------------------------
     def on_event(self, event: BehaviorEvent, frame: object) -> None:
-        """把领域事件转成 Qt 信号。
+        """记录当前激活行为并把领域事件转成 Qt 信号。
 
         作为 :class:`~driver_guard.infrastructure.alerts.CallbackAlertSink`
         的回调注册进告警服务，因此与"控制台/CSV/快照"等通道享受同一套
@@ -237,5 +244,6 @@ class DetectionWorker(QObject):
         而所有事件都会送到事件列表，由界面自行决定去重策略。
         """
         del frame
-        self._active[event.behavior] = event
+        with self._active_lock:
+            self._active[event.behavior] = event
         self.eventRaised.emit(event)

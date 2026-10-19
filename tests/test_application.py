@@ -614,6 +614,33 @@ class TestStatisticsService:
         stats.reset()
         assert stats.total == 0
 
+    def test_listener_sees_updated_counts(self, event_factory) -> None:
+        """监听者必须在计数更新之后被通知，否则界面统计会慢一条事件。"""
+        bus = EventBus()
+        stats = StatisticsService(bus)
+        snapshots: list[int] = []
+        stats.add_listener(lambda: snapshots.append(stats.total))
+        bus.publish(event_factory(BehaviorType.YAWNING))
+        assert snapshots == [1]
+
+    def test_listener_notified_on_reset(self, event_factory) -> None:
+        bus = EventBus()
+        stats = StatisticsService(bus)
+        bus.publish(event_factory())
+        snapshots: list[int] = []
+        stats.add_listener(lambda: snapshots.append(stats.total))
+        stats.reset()
+        assert snapshots == [0]
+
+    def test_listener_ignores_ongoing_duplicates(self, event_factory) -> None:
+        bus = EventBus()
+        stats = StatisticsService(bus)
+        bus.publish(event_factory())
+        snapshots: list[int] = []
+        stats.add_listener(lambda: snapshots.append(stats.total))
+        bus.publish(event_factory(ongoing=True))
+        assert snapshots == []
+
     def test_close_unsubscribes(self, event_factory) -> None:
         bus = EventBus()
         stats = StatisticsService(bus)

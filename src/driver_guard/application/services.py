@@ -42,7 +42,11 @@ __all__ = [
     "DetectionService",
     "AlertService",
     "StatisticsService",
+    "StatisticsListener",
 ]
+
+#: 统计变化回调：在采集线程中执行，界面层需自行转成 Qt 信号
+StatisticsListener = Callable[[], None]
 
 
 # ===========================================================================
@@ -421,7 +425,20 @@ class StatisticsService:
         self._severity_counts: Counter[Severity] = Counter()
         self._first_at: datetime | None = None
         self._last_at: datetime | None = None
+        self._listeners: list[StatisticsListener] = []
         self._subscription = event_bus.subscribe(self._on_event, label="StatisticsService")
+
+    # ------------------------------------------------------------------
+    def add_listener(self, listener: StatisticsListener) -> None:
+        """注册统计变化回调（新增事件或重置时触发）。"""
+        with self._lock:
+            if listener not in self._listeners:
+                self._listeners.append(listener)
+
+    def remove_listener(self, listener: StatisticsListener) -> None:
+        with self._lock:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
 
     # ------------------------------------------------------------------
     @property
@@ -462,18 +479,35 @@ class StatisticsService:
             self._severity_counts.clear()
             self._first_at = None
             self._last_at = None
+        self._notify()
 
     def close(self) -> None:
         self._subscription.close()
+        with self._lock:
+            self._listeners.clear()
 
     # ------------------------------------------------------------------
     def _on_event(self, event: BehaviorEvent, payload: object) -> None:
         del payload
+        changed = False
         with self._lock:
             # 同一次持续行为的重复提醒不计入次数，避免拉高统计
             if not event.ongoing:
                 self._counts[event.behavior] += 1
                 self._severity_counts[event.severity] += 1
+                changed = True
             self._last_at = event.wall_clock
             if self._first_at is None:
                 self._first_at = event.wall_clock
+        # 必须在释放锁之后再通知：监听者通常会再次读取统计快照
+        if changed:
+            self._notify()
+
+    def _notify(self) -> None:
+        with self._lock:
+            listeners = tuple(self._listeners)
+        for listener in listeners:
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 - 监听器故障不得中断采集
+                logger.exception("统计监听器处理失败")

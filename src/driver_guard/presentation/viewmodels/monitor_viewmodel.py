@@ -26,6 +26,7 @@ View 里 **不出现任何业务判断**（例如"置信度是否够高""该不�
 ``eventRaised``                ``BehaviorEvent``
 ``stateChanged``               ``(状态名: str, 附加说明: str)``
 ``telemetry``                  ``(帧号, FPS, 感知耗时ms, 事件累计数)``
+``statisticsChanged``          ``dict``：行为/级别统计快照
 ``sessionFinished``            ``SessionSummary``
 ``errorOccurred``              ``str``
 ``providerChanged``            提供者/数据源/降级信息的字典
@@ -79,7 +80,6 @@ class MonitorViewModel(QObject):
             show_face_box=config.ui.show_face_box,
             show_hud=config.ui.show_hud,
         )
-        self._event_total = 0
 
     # ==================================================================
     #  只读属性（View 绑定用）
@@ -98,7 +98,10 @@ class MonitorViewModel(QObject):
 
     @property
     def event_total(self) -> int:
-        return self._event_total
+        """本会话已确认的告警总数（与统计服务同源）。"""
+        if self._context is None:
+            return 0
+        return self._context.statistics.total
 
     @property
     def is_running(self) -> bool:
@@ -117,9 +120,8 @@ class MonitorViewModel(QObject):
             return True
 
         # 界面通过告警通道之一接收事件，从而复用同一套过滤与错误隔离机制
-        bridge = CallbackAlertSink(self._on_domain_event, label="界面")
         try:
-            context = build_application(self._config, extra_sinks=[bridge])
+            context = build_application(self._config)
         except Exception as exc:  # noqa: BLE001 - 把装配错误转成界面可读信息
             logger.exception("应用装配失败")
             self.errorOccurred.emit(_friendly_build_error(exc))
@@ -129,6 +131,12 @@ class MonitorViewModel(QObject):
                                  display_fps=self._config.source.fps or 30.0)
         thread = QThread()
         worker.moveToThread(thread)
+
+        # worker 作为告警通道接收事件：维护"当前激活行为"并向界面转发信号。
+        # 注意必须在启动线程前注册，否则运行中修改通道列表会与事件分发竞争。
+        context.alert_service.add_sink(
+            CallbackAlertSink(worker.on_event, label="界面")
+        )
 
         # 信号转发（工作线程 → 界面线程）
         worker.frameReady.connect(self._on_frame_ready)
@@ -144,7 +152,10 @@ class MonitorViewModel(QObject):
         self._context = context
         self._worker = worker
         self._thread = thread
-        self._event_total = 0
+
+        # 统计服务聚合完成后直接通知界面，不能再经由告警通道触发，
+        # 否则快照会落后一条事件（告警服务先于统计服务订阅事件总线）。
+        context.statistics.add_listener(self._on_statistics_changed)
 
         self.providerChanged.emit(self.describe_sources())
         for warning in context.warnings:
@@ -158,6 +169,9 @@ class MonitorViewModel(QObject):
         assert self._thread is not None
         if self._thread.isRunning():
             return False
+        # 每次启动都是新会话，"本次统计"必须从零开始
+        if self._context is not None:
+            self._context.statistics.reset()
         self._thread.start()
         return True
 
@@ -176,6 +190,7 @@ class MonitorViewModel(QObject):
                 logger.warning("工作线程未能在 4 秒内退出")
             self._thread = None
         if self._context is not None:
+            self._context.statistics.remove_listener(self._on_statistics_changed)
             self._context.shutdown()
             self._context = None
         self._worker = None
@@ -246,7 +261,7 @@ class MonitorViewModel(QObject):
 
     @Slot(int, float, float)
     def _on_telemetry(self, frame_index: int, fps: float, perception_ms: float) -> None:
-        self.telemetry.emit(frame_index, fps, perception_ms, self._event_total)
+        self.telemetry.emit(frame_index, fps, perception_ms, self.event_total)
 
     @Slot(str)
     def _on_state_changed(self, state: str) -> None:
@@ -259,14 +274,8 @@ class MonitorViewModel(QObject):
             self._context.write_session_summary(summary)  # type: ignore[arg-type]
         self.sessionFinished.emit(summary)
 
-    def _on_domain_event(self, event: Any, frame: Any) -> None:
-        """告警通道回调（在工作线程中执行）。
-
-        只做计数与转发，不做任何界面操作——真正的渲染由 View 在界面线程完成。
-        """
-        del frame
-        if not event.ongoing:
-            self._event_total += 1
+    def _on_statistics_changed(self) -> None:
+        """统计服务聚合完成后的回调（工作线程）；只发信号，由界面线程渲染。"""
         self.statisticsChanged.emit(self.statistics_snapshot())
 
 
